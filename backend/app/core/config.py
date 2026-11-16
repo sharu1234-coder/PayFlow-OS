@@ -1,3 +1,4 @@
+from typing import Literal
 from functools import lru_cache
 
 from pydantic import SecretStr
@@ -5,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_env: str = "development"
+    app_env: Literal["development", "staging", "production"]
     database_url: str
     migration_database_url: str
     csrf_secret: SecretStr
