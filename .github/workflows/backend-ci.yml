@@ -80,6 +80,10 @@ jobs:
           CREATE SCHEMA payflow AUTHORIZATION payflow_migrator;
           GRANT USAGE ON SCHEMA payflow TO payflow_runtime;
 
+          -- CI runtime schema selection.
+          ALTER ROLE payflow_runtime IN DATABASE payflow_db
+            SET search_path TO payflow, public;
+
           ALTER DEFAULT PRIVILEGES
             FOR ROLE payflow_migrator IN SCHEMA payflow
             GRANT SELECT, INSERT, UPDATE, DELETE
@@ -121,6 +125,12 @@ jobs:
               ).scalar_one()
 
               assert role == "payflow_runtime"
+
+              schema = conn.execute(
+                  text("SELECT current_schema()")
+              ).scalar_one()
+
+              assert schema == "payflow", schema
 
               for privilege in ("UPDATE", "DELETE", "TRUNCATE"):
                   allowed = conn.execute(
