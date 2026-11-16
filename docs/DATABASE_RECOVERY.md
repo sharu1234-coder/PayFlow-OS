@@ -100,7 +100,7 @@ Do not put secrets or customer data in evidence reports.
 ## Open blockers
 - No verified production backup schedule.
 - No verified offsite retention and encryption controls.
-- No completed isolated restore drill.
+- Local isolated logical restore drill completed on 2026-11-16; see [local recovery evidence](LOCAL_RECOVERY_DRILL_2026-11-16.md). Independent-host and production restore drills remain unverified.
 - No approved RPO or RTO.
 - No verified production PITR mechanism.
 
