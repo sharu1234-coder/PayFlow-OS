@@ -17,6 +17,7 @@ ALL_PERMISSIONS = frozenset({
     "members.manage",
     "credentials.manage",
     "payments.read",
+    "payments.create",
     "refunds.request",
     "reports.read",
     "billing.manage",
