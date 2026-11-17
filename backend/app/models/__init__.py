@@ -20,3 +20,10 @@ __all__ = [
     "AuthToken",
     "OrganizationInvitation",
 ]
+
+# Register payment tables for Alembic metadata discovery.
+from app.models.payments import (
+    PaymentOrder,
+    PaymentAttempt,
+    PaymentIdempotencyRecord,
+)

@@ -15,7 +15,15 @@ EXPECTED_TABLES = {
 
 
 def test_identity_tables_are_registered():
-    assert set(Base.metadata.tables) == EXPECTED_TABLES
+    # Payment models share Base.metadata and may already be
+    # registered when the full pytest suite is collected.
+    payment_tables = {
+        "payflow.payment_orders",
+        "payflow.payment_attempts",
+        "payflow.payment_idempotency_records",
+    }
+    identity_tables = set(Base.metadata.tables) - payment_tables
+    assert identity_tables == EXPECTED_TABLES
 
 
 def test_all_tables_use_payflow_schema():
