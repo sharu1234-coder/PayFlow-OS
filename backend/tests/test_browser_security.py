@@ -272,3 +272,82 @@ def test_production_rejects_empty_origins(monkeypatch):
 
     with pytest.raises(RuntimeError):
         browser_cors.browser_cors_origins()
+
+
+def test_payment_order_trusted_preflight_allows_required_headers(client):
+    response = client.options(
+        "/api/v1/organizations/"
+        "12345678-1234-4234-8234-123456789012/"
+        "payment-orders",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "content-type,idempotency-key,x-csrf-token"
+            ),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+    assert response.headers[
+        "access-control-allow-origin"
+    ] == "http://localhost:5173"
+
+    assert response.headers[
+        "access-control-allow-credentials"
+    ] == "true"
+
+    allowed_headers = {
+        header.strip().lower()
+        for header in response.headers[
+            "access-control-allow-headers"
+        ].split(",")
+    }
+
+    assert {
+        "content-type",
+        "idempotency-key",
+        "x-csrf-token",
+    }.issubset(allowed_headers)
+
+
+def test_payment_order_untrusted_preflight_is_rejected(client):
+    response = client.options(
+        "/api/v1/organizations/"
+        "12345678-1234-4234-8234-123456789012/"
+        "payment-orders",
+        headers={
+            "Origin": "https://evil.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "idempotency-key,x-csrf-token"
+            ),
+        },
+    )
+
+    assert response.status_code == 400
+
+    assert (
+        "access-control-allow-origin"
+        not in response.headers
+    )
+
+
+def test_payment_order_unapproved_header_is_rejected(client):
+    response = client.options(
+        "/api/v1/organizations/"
+        "12345678-1234-4234-8234-123456789012/"
+        "payment-orders",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "idempotency-key,"
+                "x-csrf-token,"
+                "x-unapproved-secret-header"
+            ),
+        },
+    )
+
+    assert response.status_code == 400

@@ -5,6 +5,7 @@ from app.api.organizations import router as organizations_router
 from app.api.membership_management import router as membership_management_router
 from app.api.membership_revocation import router as membership_revocation_router
 from app.api.health import router as health_router
+from app.api.payment_orders import router as payment_orders_router
 
 
 def create_app() -> FastAPI:
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
         }
 
     api.include_router(health_router)
+    api.include_router(payment_orders_router)
     api.include_router(auth_router)
     api.include_router(session_router)
     api.include_router(organizations_router)

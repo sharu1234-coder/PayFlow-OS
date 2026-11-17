@@ -38,6 +38,7 @@ SESSION_MUTATIONS = {
         "/api/v1/organizations/"
         "{organization_id}/members/{member_id}/revoke",
     ),
+    ('POST', '/api/v1/organizations/{organization_id}/payment-orders'),
 }
 
 

@@ -41,6 +41,7 @@ def browser_cors_options() -> dict:
         "allow_headers": [
             "Content-Type",
             "X-CSRF-Token",
+            "Idempotency-Key",
         ],
         "max_age": 600,
     }
