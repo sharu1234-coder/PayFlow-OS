@@ -21,6 +21,7 @@ def test_identity_tables_are_registered():
         "payflow.payment_orders",
         "payflow.payment_attempts",
         "payflow.payment_idempotency_records",
+        "payflow.payment_attempt_idempotency_records",
     }
     identity_tables = set(Base.metadata.tables) - payment_tables
     assert identity_tables == EXPECTED_TABLES
