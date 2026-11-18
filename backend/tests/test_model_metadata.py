@@ -15,15 +15,16 @@ EXPECTED_TABLES = {
 
 
 def test_identity_tables_are_registered():
-    # Payment models share Base.metadata and may already be
-    # registered when the full pytest suite is collected.
-    payment_tables = {
+    # Payment and webhook tables share Base.metadata.
+    # Exclude them when checking identity tables.
+    non_identity_tables = {
         "payflow.payment_orders",
         "payflow.payment_attempts",
         "payflow.payment_idempotency_records",
         "payflow.payment_attempt_idempotency_records",
+        "payflow.provider_event_inbox",
     }
-    identity_tables = set(Base.metadata.tables) - payment_tables
+    identity_tables = set(Base.metadata.tables) - non_identity_tables
     assert identity_tables == EXPECTED_TABLES
 
 

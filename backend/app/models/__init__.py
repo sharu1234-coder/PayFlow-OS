@@ -27,3 +27,5 @@ from app.models.payments import (
     PaymentAttempt,
     PaymentIdempotencyRecord,
 )
+
+from app.models.webhooks import VerifiedProviderEvent
