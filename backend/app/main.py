@@ -6,6 +6,8 @@ from app.api.membership_management import router as membership_management_router
 from app.api.membership_revocation import router as membership_revocation_router
 from app.api.health import router as health_router
 from app.api.payment_orders import router as payment_orders_router
+from app.api.payment_attempts_sandbox import router as sandbox_attempts_router
+from app.core import config as app_config
 
 
 def create_app() -> FastAPI:
@@ -29,6 +31,13 @@ def create_app() -> FastAPI:
     api.include_router(organizations_router)
     api.include_router(membership_management_router)
     api.include_router(membership_revocation_router)
+
+    settings = app_config.get_settings()
+    if (
+        settings.app_env == "development"
+        and settings.sandbox_payment_attempts_enabled is True
+    ):
+        api.include_router(sandbox_attempts_router)
 
     return api
 

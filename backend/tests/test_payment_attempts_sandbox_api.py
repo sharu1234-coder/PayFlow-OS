@@ -390,18 +390,31 @@ def test_sensitive_provider_fields_not_exposed(client_context):
     assert "gateway_token" not in body
 
 
-def test_api_is_not_mounted_in_real_application():
-    from pathlib import Path
+def test_sandbox_api_unmounted_when_flag_disabled():
+    from unittest.mock import patch
+    from app.main import create_app
 
-    main_path = (
-        Path(__file__).resolve().parents[1]
-        / "app"
-        / "main.py"
+    settings = SimpleNamespace(
+        app_env="development",
+        sandbox_payment_attempts_enabled=False,
     )
 
-    source = main_path.read_text(encoding="utf-8")
+    with patch(
+        "app.core.config.get_settings",
+        return_value=settings,
+    ):
+        application = create_app()
 
-    assert "payment_attempts_sandbox" not in source
+    path = (
+        "/api/v1/organizations/{organization_id}"
+        "/payment-orders/{order_id}/attempts"
+    )
+
+    # Inspect the public OpenAPI contract, not FastAPI's
+    # version-dependent internal router representation.
+    paths = application.openapi().get("paths", {})
+
+    assert "post" not in paths.get(path, {})
 
 @pytest.mark.parametrize(
     "invalid_field",
