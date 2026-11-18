@@ -22,6 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.schema import conv
 
 from app.core.model_base import Base
 
@@ -77,6 +78,11 @@ class PaymentOrder(Base):
             "organization_id",
             "merchant_order_reference",
             name="uq_payment_orders_tenant_reference",
+        ),
+        UniqueConstraint(
+            "organization_id",
+            "id",
+            name="uq_payment_orders_tenant_id",
         ),
         UniqueConstraint(
             "organization_id",
@@ -229,6 +235,119 @@ class PaymentAttempt(Base):
             "organization_id",
             "order_id",
             "status",
+        ),
+        Index(
+            "ux_payment_attempts_one_live_or_successful",
+            "organization_id",
+            "order_id",
+            unique=True,
+            postgresql_where=text(
+                "status IN ("
+                "'created', 'requires_action', 'processing', "
+                "'authorized', 'succeeded'"
+                ")"
+            ),
+        ),
+    )
+
+
+class PaymentAttemptIdempotencyRecord(Base):
+    """Durable attempt-key reservation and original-attempt mapping."""
+
+    __tablename__ = "payment_attempt_idempotency_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    idempotency_key: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+
+    request_fingerprint: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+
+    attempt_number: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        server_default=text("'reserved'"),
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "order_id"],
+            [
+                "payflow.payment_orders.organization_id",
+                "payflow.payment_orders.id",
+            ],
+            name="fk_attempt_idem_tenant_order",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "organization_id",
+                "order_id",
+                "attempt_number",
+            ],
+            [
+                "payflow.payment_attempts.organization_id",
+                "payflow.payment_attempts.order_id",
+                "payflow.payment_attempts.attempt_number",
+            ],
+            name="fk_attempt_idem_tenant_attempt",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "organization_id",
+            "idempotency_key",
+            name="uq_attempt_idem_tenant_key",
+        ),
+        CheckConstraint(
+            "idempotency_key ~ '^[A-Za-z0-9_-]{10,128}$'",
+            name=conv("ck_attempt_idem_key_format"),
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$'",
+            name=conv("ck_attempt_idem_fingerprint_format"),
+        ),
+        CheckConstraint(
+            "status IN ('reserved', 'completed')",
+            name=conv("ck_attempt_idem_status_valid"),
+        ),
+        CheckConstraint(
+            "("
+            "status = 'reserved' AND attempt_number IS NULL"
+            ") OR ("
+            "status = 'completed' AND attempt_number IS NOT NULL"
+            ")",
+            name=conv("ck_attempt_idem_status_mapping"),
         ),
     )
 
