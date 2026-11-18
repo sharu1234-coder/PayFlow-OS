@@ -1,7 +1,8 @@
-"""Unregistered development-only sandbox attempt API.
+"""Opt-in, development-only sandbox payment-attempt API.
 
-Do not mount this router until a separately authorized
-deployment provides both required database migrations.
+Mounted only when the development environment and sandbox
+feature flag are both enabled. Database use requires the
+payment-attempt uniqueness and idempotency migrations.
 
 No gateway calls, capture, settlement, refunds or webhooks.
 """

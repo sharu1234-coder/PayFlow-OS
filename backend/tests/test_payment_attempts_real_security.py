@@ -660,15 +660,38 @@ def test_get_method_does_not_create_attempt(security_client):
     assert state["service_calls"] == []
 
 
-def test_router_is_still_unmounted_in_real_app():
-    from pathlib import Path
+def test_sandbox_router_respects_environment_and_flag():
+    from unittest.mock import patch
+    from app.main import create_app
 
-    main_path = (
-        Path(__file__).resolve().parents[1]
-        / "app"
-        / "main.py"
+    sandbox_path = (
+        "/api/v1/organizations/{organization_id}"
+        "/payment-orders/{order_id}/attempts"
     )
 
-    source = main_path.read_text(encoding="utf-8")
+    for environment in ("development", "staging", "production"):
+        for enabled in (False, True):
+            settings = SimpleNamespace(
+                app_env=environment,
+                sandbox_payment_attempts_enabled=enabled,
+            )
 
-    assert "payment_attempts_sandbox" not in source
+            with patch(
+                "app.core.config.get_settings",
+                return_value=settings,
+            ):
+                application = create_app()
+
+            paths = application.openapi().get("paths", {})
+            registered = "post" in paths.get(sandbox_path, {})
+
+            expected = (
+                environment == "development"
+                and enabled is True
+            )
+
+            assert registered is expected, (
+                f"Environment={environment}, "
+                f"enabled={enabled}, "
+                f"registered={registered}"
+            )

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: SecretStr | None = None
     smtp_from_email: str | None = None
+    sandbox_payment_attempts_enabled: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
