@@ -267,6 +267,142 @@ def verify_owner_denial(migrator, harness, event):
     print("PASS: Migration owner denied by function identity check")
 
 
+def verify_worker_role_preflight(conn, harness):
+    """Verify the worker is dormant in the selected cluster.
+
+    Legacy disposable DB: worker role must not exist.
+    Isolated PostgreSQL lab: restricted role exists, but
+    cannot connect, access the schema, or inherit privileges.
+
+    This function does not create or modify roles.
+    """
+
+    row = conn.execute(
+        text("""
+            SELECT
+                rolcanlogin,
+                rolinherit,
+                rolsuper,
+                rolcreatedb,
+                rolcreaterole,
+                rolreplication,
+                rolbypassrls,
+                rolconnlimit
+            FROM pg_catalog.pg_roles
+            WHERE rolname = 'payflow_quarantine_worker'
+        """)
+    ).mappings().one_or_none()
+
+    if not harness._isolated_lab_mode():
+        ensure(
+            row is None,
+            "Legacy disposable cluster must not contain worker role",
+        )
+        return
+
+    ensure(
+        row is not None,
+        "Isolated lab worker role missing",
+    )
+
+    ensure(
+        row["rolcanlogin"] is True
+        and row["rolinherit"] is False
+        and row["rolsuper"] is False
+        and row["rolcreatedb"] is False
+        and row["rolcreaterole"] is False
+        and row["rolreplication"] is False
+        and row["rolbypassrls"] is False
+        and row["rolconnlimit"] == 2,
+        "Unexpected isolated worker role attributes",
+    )
+
+    permissions = conn.execute(
+        text("""
+            SELECT
+                pg_catalog.has_database_privilege(
+                    'payflow_quarantine_worker',
+                    current_database(),
+                    'CONNECT'
+                ),
+                pg_catalog.has_schema_privilege(
+                    'payflow_quarantine_worker',
+                    'payflow',
+                    'USAGE'
+                ),
+                EXISTS (
+                    SELECT 1
+                    FROM pg_catalog.pg_auth_members AS m
+                    JOIN pg_catalog.pg_roles AS r
+                      ON r.oid = m.member
+                    WHERE r.rolname = 'payflow_quarantine_worker'
+                )
+        """)
+    ).one()
+
+    ensure(
+        tuple(permissions) == (False, False, False),
+        "Isolated worker has unexpected access or membership",
+    )
+
+
+def verify_worker_execution_denial(migrator, harness):
+    """Ensure no worker execution or protected-table rights exist."""
+
+    if not harness._isolated_lab_mode():
+        return
+
+    with migrator.connect() as conn:
+        with conn.begin():
+            conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+            harness.verify_identity(conn, "payflow_migrator")
+
+            can_execute = conn.execute(
+                text("""
+                    SELECT pg_catalog.has_function_privilege(
+                        'payflow_quarantine_worker',
+                        'payflow.quarantine_sandbox_webhook(uuid,uuid)',
+                        'EXECUTE'
+                    )
+                """)
+            ).scalar_one()
+
+            ensure(
+                can_execute is False,
+                "Worker unexpectedly has function EXECUTE",
+            )
+
+            for relation, privilege in (
+                ("payflow.provider_event_inbox", "SELECT"),
+                ("payflow.provider_event_inbox", "UPDATE"),
+                ("payflow.webhook_quarantine_audit", "SELECT"),
+                ("payflow.webhook_quarantine_audit", "INSERT"),
+                ("payflow.payment_attempts", "SELECT"),
+                ("payflow.payment_orders", "SELECT"),
+            ):
+                permitted = conn.execute(
+                    text("""
+                        SELECT pg_catalog.has_table_privilege(
+                            'payflow_quarantine_worker',
+                            :relation,
+                            :privilege
+                        )
+                    """),
+                    {
+                        "relation": relation,
+                        "privilege": privilege,
+                    },
+                ).scalar_one()
+
+                ensure(
+                    permitted is False,
+                    "Worker has unexpected direct table privileges",
+                )
+
+    print("PASS: Worker function EXECUTE denied")
+    print("PASS: Worker has no protected-table privileges")
+
+
 def test_dormant_function_install_and_denial(monkeypatch):
     harness, helpers, audit, function = dependencies()
 
@@ -308,20 +444,7 @@ def test_dormant_function_install_and_denial(monkeypatch):
                 conn.exec_driver_sql("SET TRANSACTION READ ONLY")
                 harness.verify_baseline(conn)
 
-                worker_exists = conn.execute(
-                    text("""
-                        SELECT EXISTS (
-                            SELECT 1
-                            FROM pg_catalog.pg_roles
-                            WHERE rolname = 'payflow_quarantine_worker'
-                        )
-                    """)
-                ).scalar_one()
-
-                ensure(
-                    worker_exists is False,
-                    "Worker role already exists: manual review needed",
-                )
+                verify_worker_role_preflight(conn, harness)
 
         print("PASS: Disposable baseline and role preflight")
 
@@ -342,6 +465,8 @@ def test_dormant_function_install_and_denial(monkeypatch):
         print("PASS: Audit and dormant function temporarily installed")
 
         verify_function_definition(migrator, harness)
+
+        verify_worker_execution_denial(migrator, harness)
 
         events = helpers.insert_verified_events(
             runtime,
