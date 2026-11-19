@@ -84,6 +84,25 @@ def ensure(condition, message):
         raise AssertionError(message)
 
 
+def _isolated_lab_mode():
+    """Return true only for the explicitly selected lab database.
+
+    An unknown nonempty selector must stop, never fall back
+    silently to the original disposable PostgreSQL cluster.
+    """
+
+    selector = os.environ.get(
+        "PAYFLOW_ISOLATED_TEST_DB"
+    )
+
+    ensure(
+        selector in (None, "", TARGET),
+        "Unapproved PostgreSQL test target selector",
+    )
+
+    return selector == TARGET
+
+
 def approved_urls():
     settings = get_settings()
 
@@ -92,6 +111,7 @@ def approved_urls():
         "Development environment required",
     )
 
+    isolated = _isolated_lab_mode()
     urls = []
 
     for raw, username in (
@@ -101,26 +121,58 @@ def approved_urls():
         url = make_url(raw)
 
         ensure(
-            url.database == "payflow_db",
-            "Unexpected configured source database",
-        )
-
-        ensure(
             url.username == username,
             "Unexpected database role",
         )
 
-        ensure(
-            url.host in ("localhost", "127.0.0.1"),
-            "Remote database prohibited",
-        )
+        if isolated:
+            ensure(
+                url.drivername == "postgresql+psycopg",
+                "Isolated lab requires psycopg",
+            )
 
-        ensure(
-            url.port in (None, 5432),
-            "Unexpected PostgreSQL port",
-        )
+            ensure(
+                url.host == "127.0.0.1",
+                "Isolated lab must use IPv4 loopback",
+            )
 
-        urls.append(url.set(database=TARGET))
+            ensure(
+                url.port == 55432,
+                "Isolated lab must use port 55432",
+            )
+
+            ensure(
+                url.database == TARGET,
+                "Isolated lab database mismatch",
+            )
+
+            ensure(
+                bool(url.password),
+                "Lab role credentials required",
+            )
+
+            # Never rewrite the lab database name.
+            urls.append(url)
+
+        else:
+            # Preserve the original approved test behavior
+            # for the existing PostgreSQL server.
+            ensure(
+                url.database == "payflow_db",
+                "Unexpected configured source database",
+            )
+
+            ensure(
+                url.host in ("localhost", "127.0.0.1"),
+                "Remote database prohibited",
+            )
+
+            ensure(
+                url.port in (None, 5432),
+                "Unexpected PostgreSQL port",
+            )
+
+            urls.append(url.set(database=TARGET))
 
     return urls
 
@@ -133,6 +185,48 @@ def verify_identity(conn, expected_role):
     ensure(
         database == TARGET and role == expected_role,
         "Unexpected database identity",
+    )
+
+    if not _isolated_lab_mode():
+        return
+
+    # Unlike the legacy disposable DB, the isolated lab
+    # uses its own PostgreSQL cluster and data directory.
+    # Validate all of these before a mutating transaction.
+
+    # The separate lab-admin preflight verifies data_directory.
+    # Restricted application roles cannot read that setting.
+    # Compare the actual postmaster startup timestamp with the
+    # timestamp independently attested by the administrator.
+
+    expected_start = os.environ.get(
+        "PAYFLOW_LAB_ATTESTED_START_EPOCH"
+    )
+
+    ensure(
+        isinstance(expected_start, str)
+        and bool(expected_start),
+        "Missing isolated PostgreSQL administrator attestation",
+    )
+
+    address, port, version, started_at = conn.execute(
+        text("""
+            SELECT
+                pg_catalog.host(inet_server_addr()),
+                inet_server_port(),
+                current_setting('server_version_num')::integer,
+                EXTRACT(
+                    EPOCH FROM pg_catalog.pg_postmaster_start_time()
+                )::text
+        """)
+    ).one()
+
+    ensure(
+        address == "127.0.0.1"
+        and port == 55432
+        and 180000 <= version < 190000
+        and started_at == expected_start,
+        "Connected PostgreSQL server differs from attested lab",
     )
 
 
