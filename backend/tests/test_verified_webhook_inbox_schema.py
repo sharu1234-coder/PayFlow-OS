@@ -113,7 +113,7 @@ def test_migration_extends_existing_revision_chain():
         Config("alembic.ini")
     )
 
-    assert scripts.get_heads() == ["f3c2a119b607"]
+    assert scripts.get_heads() == ["a7c4e91d2b30"]
 
 
 def test_offline_migration_creates_inbox():

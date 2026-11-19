@@ -64,7 +64,7 @@ def test_migration_revision_chain():
     scripts = ScriptDirectory.from_config(
         Config("alembic.ini")
     )
-    assert scripts.get_heads() == ["f3c2a119b607"]
+    assert scripts.get_heads() == ["a7c4e91d2b30"]
 
     migration = load_migration()
     assert migration.down_revision == "abaee6e0c017"
